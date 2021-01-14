@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# Script compare_snapshot para comparar la «foto» original con el 
+# contenido actual de los directorios especificados en el fichero 
+# de configuración
+
+# Control de errores
+error() {
+	echo "$1" 1>&2
+	exit 1
+}
+
+# Comprobación del fichero snapshot
+
+declare snapshot="/Snapshot/snapshot"
+if [[ ! -f $snapshot ]]
+then
+	error "No existe el fichero snapshot en el directorio /Snapshot"
+fi
+
+# Comprobación del fichero de configuración de entrada
+
+declare config_file
+if [[ $# -gt 0 ]]
+then
+	if [[ -f $1 ]]
+	then
+		config_file=$1
+	else
+		echo "Fichero de configuración no existe: tomado el de por defecto" 1>&2
+		config_file="/root/Monitorizacion_de_ficheros/config_file"
+	fi
+else
+	config_file="/root/Monitorizacion_de_ficheros/config_file"
+fi
+
+# Si la lista de dichos directorios del fichero de configuración
+# (por haberse cambiado) no coincide con los directorios contenidos
+# en el fichero generado por el script snapshotdebe reportar un error
+# indicando la diferencia y salir.
+while read directory
+do
+	if [[ $(grep -cE "$directory:" $snapshot) -eq 0 ]]
+	then
+		error "En el fichero snapshot no existe el directorio: $directory del fichero de configuración"
+	fi
+done < $config_file
