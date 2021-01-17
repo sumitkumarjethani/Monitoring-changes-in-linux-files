@@ -11,16 +11,16 @@ error() {
 }
 
 # Comprobación del fichero snapshot
+declare snapshot_file="/Snapshot/snapshot"
 
-declare snapshot="/Snapshot/snapshot"
-if [[ ! -f $snapshot ]]
+if [[ ! -f $snapshot_file ]]
 then
 	error "No existe el fichero snapshot en el directorio /Snapshot"
 fi
 
 # Comprobación del fichero de configuración de entrada
-
 declare config_file
+
 if [[ $# -gt 0 ]]
 then
 	if [[ -f $1 ]]
@@ -36,12 +36,90 @@ fi
 
 # Si la lista de dichos directorios del fichero de configuración
 # (por haberse cambiado) no coincide con los directorios contenidos
-# en el fichero generado por el script snapshotdebe reportar un error
+# en el fichero generado por el script snapshot debe reportar un error
 # indicando la diferencia y salir.
 while read directory
 do
-	if [[ $(grep -cE "$directory:" $snapshot) -eq 0 ]]
+	if [[ $(grep -cE "$directory;" $snapshot_file) -eq 0 ]]
 	then
 		error "En el fichero snapshot no existe el directorio: $directory del fichero de configuración"
 	fi
 done < $config_file
+
+# Si la lista de dichos directorios del fichero de configuración 
+# coincide con los directorios contenidos en el fichero generado
+# por el script snapshot reporte cualquier diferencia como una entrada
+# de texto en el fichero /var/log/binchecker
+
+# Creación del fichero log
+declare log_file="/var/log/binchecker"
+if [[ -f $log_file ]]
+then
+	rm $log_file
+fi
+touch $log_file
+
+while read line
+do
+	directory=$(echo $line | cut -d";" -f1)
+	directory_files=$(echo "$line" | cut -d";" -f2- | tr ";" " ")
+	
+	for file in $directory_files
+	do
+		# Comprobación de fichero no borrado, sus permisos y suma de control
+
+		file_name=$(echo $file | cut -d"," -f1)
+		if [[ $(find $directory -mindepth 1 -maxdepth 1 -iname $file_name | wc -l) -eq 1 ]]
+		then
+			originalperm_file=$(echo $file | cut -d"," -f2)
+			actualperm_file=$(find $directory -mindepth 1 -maxdepth 1 -iname $file_name -printf "%M")
+			if [[ $originalperm_file != $actualperm_file ]]
+			then
+				echo "Al fichero $directory/$file_name se le han modificado los permisos." >> $log_file
+				echo "Permisos actuales: $actualperm_file" >> $log_file
+				echo "Permisos originales: $originalperm_file" >> $log_file
+			fi
+			if [[ -d $directory/$file_name || -b $directory/$file_name || -c $directory/$file_name || -h $directory/$file_name ]]
+			then
+				continue
+			fi
+			originalchecksum_file=$(echo $file | cut -d"," -f3)
+			actualchecksum_file=$(sha512sum $directory/$file_name | cut -d" " -f1)
+			if [[ $originalchecksum_file != $actualchecksum_file ]]
+			then
+				echo "El fichero $directory/$file_name tiene un contenido diferente." >> $log_file
+				echo "Suma de control actual: $actualchecksum_file" >> $log_file
+				echo "Suma de control original: $originalchecksum_file" >> $log_file
+			fi
+		else
+			echo "El fichero $directory/$file_name ha sido borrado." >> $log_file
+		fi		
+	done
+	
+	# Comprobación de nuevos ficheros en el directorio
+	directory_files=$(find $directory -mindepth 1 -maxdepth 1 -printf "%f ")
+	directory_files=${directory_files% }
+	for file in $directory_files
+	do
+		if [[ $(echo $line | grep -cE ";$file,") -eq 0 ]]
+		then
+			echo "El fichero $directory/$file ha sido creado" >> $log_file	
+		fi
+	done
+	
+done < $snapshot_file
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

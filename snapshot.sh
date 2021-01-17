@@ -4,63 +4,95 @@
 # configuración,y que contenga el nombre cada directorio seguido de los nombres de los ficheros que hay en el mismo, 
 # sus permisos de acceso y una suma de control de su contenido.
 
+declare directory="/Snapshot"
+declare snapshot_file="$directory/snapshot"
 declare config_file
 
-# Comprobación del parametro de entrada
-if [[ $# -gt 0 ]]
+# Control de errores
+error() {
+	echo "$1" 1>&2
+	exit 1
+}
+
+# Función de limpieza del directorio /Snapshot
+clean() {
+	find "$directory" -mindepth 1 -maxdepth 1 -delete
+	return 0
+}
+
+# Comprobación de los parametros de entrada
+if [[ $# -gt 1 ]]
 then
-	if [[ -f $1 ]]
+	if [[ $1 = "-c" ]]
 	then
-		config_file=$1
+		clean
 	else
-		echo "Fichero de configuración no existe: tomado el de por defecto" 1>&2
+		error "Comando incorrecto"
+	fi
+	if [[ -f $2 ]]
+	then
+		config_file=$2
+	else
+		echo "Fichero de configuración no existe: tomado el de por defecto"
 		config_file="/root/Monitorizacion_de_ficheros/config_file"
 	fi
+elif [[ $# -eq 1 ]]
+then
+	if [[ $1 = "-c" ]]
+	then
+		clean
+		config_file="/root/Monitorizacion_de_ficheros/config_file"
+	elif [[ -f $1 ]]
+	then
+		config_file=$1
+	fi
 else
+	echo "Fichero de configuración: tomado el de por defecto"
 	config_file="/root/Monitorizacion_de_ficheros/config_file"
 fi
 
-# Creación del fichero que contendra la "foto" en un directorio que cuelga del /
+# Creación del directorio que contendra la "foto"
 
-declare directory="/Snapshot"
-#PENDIENTE
 if [[ ! -d $directory ]]
 then
 	mkdir $directory
 fi
 
-directory="$directory/snapshot"
-rm $directory 2>/dev/null
-touch $directory 
+# Creación del fichero que contendra la "foto" en el directorio /Snapshot
 
-# Contenido de la foto del archivo snapshot
+if [[ -f $snapshot_file ]]
+then
+	mv $snapshot_file "$directory/snapshot.$(date +%d-%m-%Y-%H:%M:%S)" 
+fi
+touch $snapshot_file 
+
+# Creación del contenido de la foto del archivo snapshot
 
 declare line=""
 while read check_directory
 do
 	if [[ -d $check_directory ]]
 	then
-		line="$check_directory:"
+		line="$check_directory;"
 		files=$(find $check_directory -mindepth 1 -maxdepth 1 -printf "%f,%M,\n")
 		for file_info in $files
 		do
 			file_name=$(echo $file_info | cut -d"," -f1)
-			declare checksum
-			# echo "$check_directory/$file_name"  ¿enlaces simbolicos muy grandes?
+			declare information
 			if [[ -d "$check_directory/$file_name" ]]
 			then
-				checksum="Suma no calculable (Directorio)"
-				checksum="$file_info$checksum"
-			elif [[ -b "$check_directory/$file_name" || -c "$check_directory/$file_name" ]]
+				checksum="SumaNoCalculable(Directorio)"
+				information="$file_info$checksum"
+			elif [[ -b "$check_directory/$file_name" || -c "$check_directory/$file_name" || -h "$check_directory/$file_name" ]]
 			then
-				checksum="Suma no calculable (Fichero especial)"
-				checksum="$file_info$checksum"
+				checksum="SumaNoCalculable(FicheroEspecial)"
+				information="$file_info$checksum"
 			else
-				checksum="$file_info$(sha512sum $check_directory/$file_name | cut -d" " -f1)"
+				information="$file_info$(sha512sum $check_directory/$file_name | cut -d" " -f1)"
 			fi
-			line="$line$checksum;"
+			line="$line$information;"
 		done
-		echo $line >> $directory
+		echo $line >> $snapshot_file
 	fi
 done < $config_file
 echo "Foto tomada correctamente"
