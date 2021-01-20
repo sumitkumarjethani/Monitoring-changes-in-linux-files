@@ -108,18 +108,3 @@ do
 	done
 	
 done < $snapshot_file
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
